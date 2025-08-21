@@ -342,10 +342,23 @@
         }
       }
       else if(language === 'PHP'){
-        // ... (PHP-Code bleibt unverändert) ...
+        if(dbType === 'MySQL'){
+          code = `<?php\n$pdo = new PDO('mysql:host=localhost;dbname=test;charset=utf8mb4', 'user', 'pass', [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);\n$sql = ${JSON.stringify(sql)};\n$params = ${placeholder === ':named' ? '/* assoc array */' : '/* index array */'};\n$params = ${placeholder === ':named' ? '[]' : '[]'}; // TODO: Werte einsetzen\n$stmt = $pdo->prepare($sql);\n$stmt->execute($params);\n${['read'].includes(el('method').value) ? '$data = $stmt->fetchAll(PDO::FETCH_ASSOC);' : ''}\n?>`;
+        } else { // SQLite
+          code = `<?php\n$pdo = new PDO('sqlite:app.db', null, null, [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);\n$sql = ${JSON.stringify(sql)};\n$params = ${placeholder === ':named' ? '[]' : '[]'}; // TODO\n$stmt = $pdo->prepare($sql);\n$stmt->execute($params);\n${['read'].includes(el('method').value) ? '$data = $stmt->fetchAll(PDO::FETCH_ASSOC);' : ''}\n?>`;
+        }
       }
       else if(language === 'Python'){
-        // ... (Python-Code bleibt unverändert) ...
+        if(dbType === 'MySQL'){
+          const pyPlaceholder = (placeholder === '?') ? '%s' : (placeholder === ':named' ? '%(name)s' : placeholder);
+          const sqlPy = sql.replaceAll(':', '%(').replaceAll(')', ')s'); // naive for named
+          const finalSQL = (placeholder === ':named') ? sqlPy : sql.replaceAll(placeholder, pyPlaceholder);
+          code = `# mit mysql-connector-python\nimport mysql.connector as mc\nconn = mc.connect(host='localhost', user='root', password='pass', database='test')\ncur = conn.cursor(dictionary=True)\nsql = ${JSON.stringify(finalSQL)}\nparams = ${Array.isArray(paramObj) ? '[' + paramObj.map(()=>"...").join(', ') + ']' : '{' + Object.keys(paramObj).map(k=>`'${k}': ...`).join(', ') + '}'}\ncur.execute(sql, params)\n${['read'].includes(el('method').value) ? 'rows = cur.fetchall()' : 'conn.commit()'}\ncur.close(); conn.close()`;
+        } else {
+          // sqlite3 in Python nutzt immer '?', named ':name'
+          const finalSQL = sql; // kompatibel
+          code = `# mit sqlite3 (Standardbibliothek)\nimport sqlite3\ncon = sqlite3.connect('app.db')\ncon.row_factory = sqlite3.Row\ncur = con.cursor()\nsql = ${JSON.stringify(finalSQL)}\nparams = ${Array.isArray(paramObj) ? '[' + paramObj.map(()=>"...").join(', ') + ']' : '{' + Object.keys(paramObj).map(k=>`'${k}': ...`).join(', ') + '}'}\ncur.execute(sql, ${Array.isArray(paramObj) ? 'params' : '**params'})\n${['read'].includes(el('method').value) ? 'rows = cur.fetchall()' : 'con.commit()'}\ncur.close(); con.close()`;
+        }
       }
       else if(language === 'Go'){
         if(dbType === 'MySQL'){
